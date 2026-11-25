@@ -22,7 +22,7 @@ pipeline {
       }
       steps {
         // Build the image
-        sh 'docker build -t todo .'
+        sh 'docker buildd -t todo .'
 
         // Run two containers from the same image
         sh 'docker run -d -p 8000:8000 --name todo_container1 todo'
