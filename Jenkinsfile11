@@ -2,40 +2,64 @@ pipeline {
   agent any
 
   stages {
-      stage('Build') {
+    stage('Build') {
       agent {
-        docker { image 'django:latest' }
+        docker {
+          image 'python:3.9-slim'
+          args '-e HOME=/tmp'
+        }
       }
       steps {
-            // Run the Django server in the foreground
-            sh 'python3 manage.py check' 
-            echo 'Django server started. Proceeding to next stage...'
+        sh 'pip install --user django==3.2'
+        sh 'python manage.py check'
+        echo 'Django check completed. Proceeding to next stage...'
       }
     }
 
     stage('Deploy') {
+      when {
+        expression { return env.GIT_BRANCH == 'origin/develop' || env.BRANCH_NAME == 'develop' }
+      }
       steps {
         // Build the image
         sh 'docker build -t todo .'
-        
-        // Run the container with a specific name (e.g., 'todo_container')
-        sh 'docker run -d -p 8000:8000 --name todo_container todo'
+
+        // Run two containers from the same image
+        sh 'docker run -d -p 8000:8000 --name todo_container1 todo'
+        sh 'docker run -d -p 8001:8000 --name todo_container2 todo'
+
+        // Verify both containers are running
+        sh '''
+          docker ps --filter "name=todo_container1" --filter "status=running" --format "{{.Names}}" | grep -w todo_container1
+          docker ps --filter "name=todo_container2" --filter "status=running" --format "{{.Names}}" | grep -w todo_container2
+          echo "Both containers are running"
+          docker ps
+        '''
       }
       post {
         always {
           echo 'Waiting for 2 minutes before stopping and deleting containers...'
-          // Sleep for 2 minutes before stopping and deleting containers
           sleep 120
 
-          // Stop the container using its name
-          echo 'Stopping container...'
-          sh 'docker stop todo_container'
+          echo 'Stopping containers...'
+          sh 'docker stop todo_container1 todo_container2 || true'
 
-          // Remove the container
-          echo 'Removing container...'
-          sh 'docker rm todo_container'
+          echo 'Removing containers...'
+          sh 'docker rm todo_container1 todo_container2 || true'
         }
       }
+    }
+  }
+
+  post {
+    success {
+      echo 'Pipeline executed successfully'
+    }
+    failure {
+      echo 'Pipeline execution failed'
+    }
+    always {
+      echo 'Pipeline execution completed'
     }
   }
 }
